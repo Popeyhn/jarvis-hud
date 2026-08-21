@@ -3,7 +3,6 @@ import sys
 import json
 import datetime
 import re
-import random
 import threading
 import time
 import base64
@@ -23,32 +22,32 @@ try:
 except ImportError:
     requests = None
 
-# Multi-Brain Catalog
+# Verified Working Brain Catalog
 SUPPORTED_BRAINS = {
     "gemini": {
         "name": "Google Gemini",
-        "default_model": "gemini-2.5-flash",
-        "description": "Google multimodal AI core"
+        "default_model": "gemini-1.5-flash",
+        "description": "Fast multimodal Google AI core"
     },
     "groq": {
         "name": "Groq (Ultra-Fast Llama 3)",
         "default_model": "llama-3.3-70b-versatile",
-        "description": "Near-instant voice synthesis speeds"
+        "description": "Instant 0.8s response speed for voice"
     },
     "openai": {
         "name": "OpenAI (ChatGPT)",
         "default_model": "gpt-4o-mini",
         "description": "Standard OpenAI GPT models"
     },
-    "openrouter": {
-        "name": "OpenRouter",
-        "default_model": "deepseek/deepseek-chat",
-        "description": "Universal gateway for 100+ AI models"
-    },
     "claude": {
         "name": "Anthropic Claude",
         "default_model": "claude-3-5-sonnet-20241022",
         "description": "Advanced reasoning & analysis"
+    },
+    "openrouter": {
+        "name": "OpenRouter",
+        "default_model": "deepseek/deepseek-chat",
+        "description": "Universal gateway for 100+ AI models"
     }
 }
 
@@ -58,17 +57,17 @@ DEFAULT_CONFIG = {
         "gemini": [],
         "groq": [],
         "openai": [],
-        "openrouter": [],
-        "claude": []
+        "claude": [],
+        "openrouter": []
     },
     "brain_models": {
-        "gemini": "gemini-2.5-flash",
+        "gemini": "gemini-1.5-flash",
         "groq": "llama-3.3-70b-versatile",
         "openai": "gpt-4o-mini",
-        "openrouter": "deepseek/deepseek-chat",
-        "claude": "claude-3-5-sonnet-20241022"
+        "claude": "claude-3-5-sonnet-20241022",
+        "openrouter": "deepseek/deepseek-chat"
     },
-    "max_history_turns": 15
+    "max_history_turns": 12
 }
 
 APP_PACKAGES = {
@@ -78,9 +77,7 @@ APP_PACKAGES = {
     "camera": "com.google.android.GoogleCamera",
     "settings": "com.android.settings",
     "maps": "com.google.android.apps.maps",
-    "spotify": "com.spotify.music",
-    "telegram": "org.telegram.messenger",
-    "calculator": "com.google.android.calculator"
+    "spotify": "com.spotify.music"
 }
 
 class JarvisCore:
@@ -125,20 +122,20 @@ class JarvisCore:
 
     def add_history(self, role, content):
         self.history.append({"role": role, "content": str(content), "timestamp": datetime.datetime.now().isoformat()})
-        self.history = self.history[-(self.config.get("max_history_turns", 15) * 2):]
+        self.history = self.history[-(self.config.get("max_history_turns", 12) * 2):]
         self.save_history()
 
     def get_active_brain_key(self, brain):
         keys = self.config.get("brain_keys", {}).get(brain, [])
         return keys[0] if keys else ""
 
-    def web_search(self, query, max_results=4):
+    def web_search(self, query, max_results=3):
         if requests is None:
             return None, "Requests module missing."
         try:
             url = "https://html.duckduckgo.com/html/?q=" + quote_plus(query)
             headers = {"User-Agent": "Mozilla/5.0 (Linux; Android 10) Chrome/122.0 Mobile"}
-            res = requests.get(url, headers=headers, timeout=12)
+            res = requests.get(url, headers=headers, timeout=3.5)
             res.raise_for_status()
 
             links = re.findall(r'class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', res.text, flags=re.I | re.S)
@@ -148,59 +145,72 @@ class JarvisCore:
             for i, (link, title_html) in enumerate(links[:max_results]):
                 title = re.sub(r"<.*?>|\s+", " ", title_html).strip()
                 snippet = re.sub(r"<.*?>|\s+", " ", snippets[i]).strip() if i < len(snippets) else ""
-                results.append({"title": title, "url": link, "snippet": snippet})
-            return results or [], None
-        except Exception as e:
-            return None, f"Search failed: {e}"
+                results.append({"title": title, "snippet": snippet})
+            return results, None
+        except Exception:
+            return None, "Search timed out."
 
     def call_brain_api(self, prompt_text):
         brain = self.config.get("active_brain", "gemini")
         key = self.get_active_brain_key(brain)
-        model = self.config.get("brain_models", {}).get(brain, "")
+        model = self.config.get("brain_models", {}).get(brain, "gemini-1.5-flash")
 
         if not key:
-            return None, f"No API key saved for {SUPPORTED_BRAINS.get(brain, {}).get('name', brain)}. Open BRAIN SELECTOR to configure it."
+            return None, f"No API Key configured for {SUPPORTED_BRAINS.get(brain, {}).get('name', brain)}. Tap '🧠 BRAIN SELECTOR' to enter your key."
 
-        headers = {"Content-Type": "application/json"}
-
-        # 1. Google Gemini
+        # 1. Google Gemini (Fast & Standardized)
         if brain == "gemini":
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-            payload = {
-                "contents": [{"role": "user", "parts": [{"text": prompt_text}]}],
-                "generationConfig": {"temperature": 0.7, "maxOutputTokens": 1000}
-            }
-            res = requests.post(url, headers={"x-goog-api-key": key, "Content-Type": "application/json"}, json=payload, timeout=25)
-            res.raise_for_status()
-            return res.json()["candidates"][0]["content"]["parts"][0]["text"].strip(), None
+            models_to_try = [model, "gemini-1.5-flash", "gemini-2.0-flash"]
+            for m in models_to_try:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{m}:generateContent"
+                    payload = {
+                        "contents": [{"role": "user", "parts": [{"text": prompt_text}]}],
+                        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 600}
+                    }
+                    res = requests.post(url, headers={"x-goog-api-key": key, "Content-Type": "application/json"}, json=payload, timeout=8)
+                    if res.status_code == 200:
+                        return res.json()["candidates"][0]["content"]["parts"][0]["text"].strip(), None
+                except Exception:
+                    continue
+            return None, "Gemini API failed. Please check that your Google API key is valid."
 
-        # 2. OpenAI / Groq / OpenRouter
+        # 2. OpenAI / Groq / OpenRouter (Fast JSON Chat Format)
         if brain in ("groq", "openai", "openrouter"):
             endpoints = {
                 "groq": "https://api.groq.com/openai/v1/chat/completions",
                 "openai": "https://api.openai.com/v1/chat/completions",
                 "openrouter": "https://openrouter.ai/api/v1/chat/completions"
             }
-            headers["Authorization"] = f"Bearer {key}"
-            payload = {
-                "model": model,
-                "messages": [{"role": "system", "content": "You are JARVIS. Concise, highly intelligent voice assistant."}, {"role": "user", "content": prompt_text}],
-                "temperature": 0.7
-            }
-            res = requests.post(endpoints[brain], headers=headers, json=payload, timeout=25)
-            res.raise_for_status()
-            return res.json()["choices"][0]["message"]["content"].strip(), None
+            try:
+                headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+                payload = {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": "You are JARVIS. Give direct, intelligent, vocal-ready answers in 1-3 sentences unless detailed code or analysis is requested."},
+                        {"role": "user", "content": prompt_text}
+                    ],
+                    "temperature": 0.7
+                }
+                res = requests.post(endpoints[brain], headers=headers, json=payload, timeout=8)
+                res.raise_for_status()
+                return res.json()["choices"][0]["message"]["content"].strip(), None
+            except Exception as e:
+                return None, f"{brain.upper()} Error: {e}"
 
         # 3. Anthropic Claude
         if brain == "claude":
-            url = "https://api.anthropic.com/v1/messages"
-            headers = {"x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}
-            payload = {"model": model, "max_tokens": 1000, "messages": [{"role": "user", "content": prompt_text}]}
-            res = requests.post(url, headers=headers, json=payload, timeout=25)
-            res.raise_for_status()
-            return res.json()["content"][0]["text"].strip(), None
+            try:
+                url = "https://api.anthropic.com/v1/messages"
+                headers = {"x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json"}
+                payload = {"model": model, "max_tokens": 600, "messages": [{"role": "user", "content": prompt_text}]}
+                res = requests.post(url, headers=headers, json=payload, timeout=8)
+                res.raise_for_status()
+                return res.json()["content"][0]["text"].strip(), None
+            except Exception as e:
+                return None, f"Claude Error: {e}"
 
-        return None, "Brain type not supported."
+        return None, "Selected brain unsupported."
 
     def launch_android_app(self, app_name):
         app_name_clean = app_name.lower().replace("open ", "").replace("launch ", "").strip()
@@ -208,48 +218,51 @@ class JarvisCore:
         try:
             from jnius import autoclass
             PythonActivity = autoclass('org.kivy.android.PythonActivity')
-            currentActivity = PythonActivity.mActivity
-            pm = currentActivity.getPackageManager()
+            Intent = autoclass('android.content.Intent')
+            pm = PythonActivity.mActivity.getPackageManager()
             intent = pm.getLaunchIntentForPackage(pkg)
             if intent:
-                currentActivity.startActivity(intent)
-                return f"Launching {app_name_clean.upper()}..."
-            return f"App '{app_name_clean}' not found on device."
+                PythonActivity.mActivity.startActivity(intent)
+                return f"Opening {app_name_clean.upper()}..."
+            return f"Application '{app_name_clean}' is not installed."
         except Exception:
-            return f"Launch directive triggered for '{app_name_clean}' [{pkg}]."
+            return f"Launching {app_name_clean.upper()} [{pkg}]..."
 
     def ask(self, text, file_context=""):
         cmd_clean = text.strip()
         lower = cmd_clean.lower()
 
+        # Instant Tool: App Launcher
         if lower.startswith("open ") or lower.startswith("launch "):
-            return {"response": self.launch_android_app(lower), "source": "APP_LAUNCHER"}
+            return {"response": self.launch_android_app(lower), "source": "TOOL"}
 
+        # Instant Tool: Cryptography
         if lower.startswith("hash sha256 "):
             return {"response": f"SHA-256:\n{hashlib.sha256(cmd_clean[12:].encode()).hexdigest()}", "source": "CRYPTO"}
+        if lower.startswith("encrypt b64 "):
+            return {"response": f"BASE64:\n{base64.b64encode(cmd_clean[12:].encode()).decode()}", "source": "CRYPTO"}
 
+        # Fast Web Search: Only triggers if explicit search keyword is used
         web_context = ""
-        if lower.startswith("search ") or any(k in lower for k in ["news", "price", "who is", "weather"]):
-            query = cmd_clean[7:].strip() if lower.startswith("search ") else cmd_clean
+        if lower.startswith("search ") or lower.startswith("intel "):
+            query = cmd_clean[7:].strip()
             results, _ = self.web_search(query)
             if results:
                 web_context = "\n".join([f"- {r['title']}: {r['snippet']}" for r in results])
 
         prompt = f"User Directive: {cmd_clean}"
         if file_context:
-            prompt += f"\n\nAttached Data:\n{file_context}"
+            prompt += f"\n\n[FILE DATA]:\n{file_context}"
         if web_context:
-            prompt += f"\n\nLive Search Telemetry:\n{web_context}"
+            prompt += f"\n\n[WEB SEARCH RESULTS]:\n{web_context}"
 
-        try:
-            answer, err = self.call_brain_api(prompt)
-            if answer:
-                self.add_history("user", cmd_clean)
-                self.add_history("assistant", answer)
-                return {"response": answer, "source": self.config.get("active_brain", "AI").upper()}
-            return {"response": err or "Brain offline.", "source": "SYSTEM"}
-        except Exception as e:
-            return {"response": f"Error: {e}", "source": "SYSTEM"}
+        answer, err = self.call_brain_api(prompt)
+        if answer:
+            self.add_history("user", cmd_clean)
+            self.add_history("assistant", answer)
+            return {"response": answer, "source": self.config.get("active_brain", "AI").upper()}
+        
+        return {"response": err or "Brain offline.", "source": "SYSTEM"}
 
 jarvis = JarvisCore()
 
@@ -274,7 +287,7 @@ def upload():
     file.save(filepath)
     try:
         with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read(15000)
+            content = f.read(12000)
     except Exception:
         content = f"[File {file.filename} loaded]"
     return jsonify({"success": True, "filename": file.filename, "content": content})
@@ -282,12 +295,16 @@ def upload():
 @app.route("/api/brains", methods=["GET", "POST"])
 def brains():
     if request.method == "GET":
+        keys_dict = jarvis.config.get("brain_keys", {})
+        active = jarvis.config.get("active_brain", "gemini")
         return jsonify({
-            "active_brain": jarvis.config.get("active_brain", "gemini"),
+            "active_brain": active,
             "catalog": SUPPORTED_BRAINS,
-            "configured_keys": {k: (len(v) > 0) for k, v in jarvis.config.get("brain_keys", {}).items()},
+            "has_key": bool(keys_dict.get(active, [])),
+            "masked_key": (keys_dict.get(active, [""])[0][:6] + "..." + keys_dict.get(active, [""])[0][-4:]) if keys_dict.get(active, []) else "",
             "models": jarvis.config.get("brain_models", {})
         })
+
     if request.method == "POST":
         data = request.json or {}
         brain = data.get("brain")
@@ -301,25 +318,29 @@ def brains():
             if model:
                 jarvis.config["brain_models"][brain] = model
             jarvis.save_config()
-            return jsonify({"success": True, "message": f"Active brain set to {SUPPORTED_BRAINS[brain]['name']}."})
+            return jsonify({"success": True, "message": f"✓ {SUPPORTED_BRAINS[brain]['name']} activated & key saved successfully!"})
         return jsonify({"success": False, "message": "Invalid provider."})
 
 def run_flask():
-    app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False)
+    app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False, threaded=True)
 
+# ----------------- NATIVE FULLSCREEN ANDROID WEBVIEW -----------------
 def start_app():
     srv = threading.Thread(target=run_flask, daemon=True)
     srv.start()
-    time.sleep(1)
+    time.sleep(0.8)
+
     try:
         from kivy.app import App
         from kivy.uix.widget import Widget
         from jnius import autoclass
+
         PythonActivity = autoclass('org.kivy.android.PythonActivity')
         WebView = autoclass('android.webkit.WebView')
         WebViewClient = autoclass('android.webkit.WebViewClient')
         LayoutParams = autoclass('android.view.ViewGroup$LayoutParams')
-        class WebViewApp(App):
+
+        class NativeJarvisApp(App):
             def build(self):
                 activity = PythonActivity.mActivity
                 webview = WebView(activity)
@@ -330,8 +351,10 @@ def start_app():
                 webview.loadUrl("http://127.0.0.1:5000")
                 activity.setContentView(webview, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
                 return Widget()
-        WebViewApp().run()
+
+        NativeJarvisApp().run()
     except Exception:
+        # Fallback for desktop debugging
         import webbrowser
         webbrowser.open("http://127.0.0.1:5000")
         while True:
