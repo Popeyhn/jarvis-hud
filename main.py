@@ -14,7 +14,6 @@ from flask import Flask, render_template, request, jsonify
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE_DIR, "jarvis_config.json")
 HISTORY_FILE = os.path.join(BASE_DIR, "jarvis_memory.json")
-ROUTINES_FILE = os.path.join(BASE_DIR, "jarvis_routines.json")
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -29,32 +28,27 @@ SUPPORTED_BRAINS = {
     "gemini": {
         "name": "Google Gemini",
         "default_model": "gemini-2.5-flash",
-        "description": "Google flagship multimodal AI",
-        "auth_type": "header_or_query"
+        "description": "Google multimodal AI core"
     },
     "groq": {
         "name": "Groq (Ultra-Fast Llama 3)",
         "default_model": "llama-3.3-70b-versatile",
-        "description": "Near-instant response speed for voice",
-        "auth_type": "bearer"
+        "description": "Near-instant voice synthesis speeds"
     },
     "openai": {
         "name": "OpenAI (ChatGPT)",
         "default_model": "gpt-4o-mini",
-        "description": "Standard OpenAI GPT models",
-        "auth_type": "bearer"
+        "description": "Standard OpenAI GPT models"
     },
     "openrouter": {
         "name": "OpenRouter",
         "default_model": "deepseek/deepseek-chat",
-        "description": "Universal gateway for 100+ AI models",
-        "auth_type": "bearer"
+        "description": "Universal gateway for 100+ AI models"
     },
     "claude": {
         "name": "Anthropic Claude",
         "default_model": "claude-3-5-sonnet-20241022",
-        "description": "Advanced reasoning & coding",
-        "auth_type": "anthropic"
+        "description": "Advanced reasoning & analysis"
     }
 }
 
@@ -74,7 +68,6 @@ DEFAULT_CONFIG = {
         "openrouter": "deepseek/deepseek-chat",
         "claude": "claude-3-5-sonnet-20241022"
     },
-    "auto_search": True,
     "max_history_turns": 15
 }
 
@@ -94,7 +87,6 @@ class JarvisCore:
     def __init__(self):
         self.config = self.load_config()
         self.history = self.load_history()
-        self.routines = self.load_routines()
 
     def load_config(self):
         data = DEFAULT_CONFIG.copy()
@@ -130,18 +122,6 @@ class JarvisCore:
                 json.dump(self.history, f, indent=2, ensure_ascii=False)
         except Exception:
             pass
-
-    def load_routines(self):
-        if os.path.exists(ROUTINES_FILE):
-            try:
-                with open(ROUTINES_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-        return {
-            "morning briefing": ["status", "search top news today"],
-            "security audit": ["status", "hash sha256 SECURE_SYSTEM_ACTIVE"]
-        }
 
     def add_history(self, role, content):
         self.history.append({"role": role, "content": str(content), "timestamp": datetime.datetime.now().isoformat()})
@@ -179,7 +159,7 @@ class JarvisCore:
         model = self.config.get("brain_models", {}).get(brain, "")
 
         if not key:
-            return None, f"No API key saved for {SUPPORTED_BRAINS.get(brain, {}).get('name', brain)}. Go to SETTINGS to configure it."
+            return None, f"No API key saved for {SUPPORTED_BRAINS.get(brain, {}).get('name', brain)}. Open BRAIN SELECTOR to configure it."
 
         headers = {"Content-Type": "application/json"}
 
@@ -194,7 +174,7 @@ class JarvisCore:
             res.raise_for_status()
             return res.json()["candidates"][0]["content"]["parts"][0]["text"].strip(), None
 
-        # 2. OpenAI / Groq / OpenRouter (Standard OpenAI API format)
+        # 2. OpenAI / Groq / OpenRouter
         if brain in ("groq", "openai", "openrouter"):
             endpoints = {
                 "groq": "https://api.groq.com/openai/v1/chat/completions",
@@ -242,17 +222,12 @@ class JarvisCore:
         cmd_clean = text.strip()
         lower = cmd_clean.lower()
 
-        # Tools: App Opener
         if lower.startswith("open ") or lower.startswith("launch "):
             return {"response": self.launch_android_app(lower), "source": "APP_LAUNCHER"}
 
-        # Tools: Cryptography
         if lower.startswith("hash sha256 "):
             return {"response": f"SHA-256:\n{hashlib.sha256(cmd_clean[12:].encode()).hexdigest()}", "source": "CRYPTO"}
-        if lower.startswith("encrypt b64 "):
-            return {"response": f"BASE64:\n{base64.b64encode(cmd_clean[12:].encode()).decode()}", "source": "CRYPTO"}
 
-        # Web Search Context
         web_context = ""
         if lower.startswith("search ") or any(k in lower for k in ["news", "price", "who is", "weather"]):
             query = cmd_clean[7:].strip() if lower.startswith("search ") else cmd_clean
@@ -274,7 +249,7 @@ class JarvisCore:
                 return {"response": answer, "source": self.config.get("active_brain", "AI").upper()}
             return {"response": err or "Brain offline.", "source": "SYSTEM"}
         except Exception as e:
-            return {"response": f"Connection Error: {e}", "source": "SYSTEM"}
+            return {"response": f"Error: {e}", "source": "SYSTEM"}
 
 jarvis = JarvisCore()
 
@@ -326,8 +301,8 @@ def brains():
             if model:
                 jarvis.config["brain_models"][brain] = model
             jarvis.save_config()
-            return jsonify({"success": True, "message": f"Active brain switched to {SUPPORTED_BRAINS[brain]['name']}."})
-        return jsonify({"success": False, "message": "Invalid brain provider."})
+            return jsonify({"success": True, "message": f"Active brain set to {SUPPORTED_BRAINS[brain]['name']}."})
+        return jsonify({"success": False, "message": "Invalid provider."})
 
 def run_flask():
     app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False)
