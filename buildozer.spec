@@ -7,7 +7,7 @@ source.include_exts = py,png,jpg,kv,atlas,html,css,js,json
 version = 2.0.0
 
 # Requirements
-requirements = python3,kivy,flask,requests,urllib3,idna,jinja2,werkzeug,pyjnius
+requirements = python3,kivy==2.3.0,flask,requests,urllib3,idna,jinja2,werkzeug,pyjnius
 
 orientation = portrait
 fullscreen = 0
