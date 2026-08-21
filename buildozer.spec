@@ -1,22 +1,23 @@
 [app]
 title = JARVIS
-package.name = jarvis_assistant
+package.name = jarvis_hud
 package.domain = org.stark.jarvis
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,html,css,js,json
 version = 2.0.0
 
 # Requirements
-requirements = python3,kivy==2.3.0,flask,requests,urllib3,charset-normalizer,idna,jinja2,werkzeug,pyjnius
+requirements = python3,kivy,flask,requests,urllib3,idna,jinja2,werkzeug,pyjnius
 
 orientation = portrait
 fullscreen = 0
-android.archs = arm64-v8a, armeabi-v7a
+android.archs = arm64-v8a
 android.allow_backup = True
 android.permissions = INTERNET,ACCESS_NETWORK_STATE,RECORD_AUDIO,WAKE_LOCK
-android.api = 34
+android.api = 33
 android.minapi = 24
 android.ndk_api = 24
+android.accept_sdk_license = True
 
 [buildozer]
 log_level = 2
